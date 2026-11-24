@@ -1,0 +1,25 @@
+{
+  "_note": "Which raw button/axis numbers belong to which DualSense button. The app picks 'sdl' automatically when SDL's own DualSense driver is used (normal case). Run 'Test Controller.bat' if a button seems wrong.",
+  "trigger_threshold": 0.6,
+  "sdl": {
+    "buttons": {
+      "cross": 0, "circle": 1, "square": 2, "triangle": 3,
+      "create": 4, "ps": 5, "options": 6,
+      "l3": 7, "r3": 8, "l1": 9, "r1": 10,
+      "dpad_up": 11, "dpad_down": 12, "dpad_left": 13, "dpad_right": 14,
+      "touchpad": 15
+    },
+    "axes": { "lx": 0, "ly": 1, "rx": 2, "ry": 3, "l2": 4, "r2": 5 },
+    "dpad_hat": null
+  },
+  "directinput": {
+    "buttons": {
+      "square": 0, "cross": 1, "circle": 2, "triangle": 3,
+      "l1": 4, "r1": 5, "l2": 6, "r2": 7,
+      "create": 8, "options": 9, "l3": 10, "r3": 11,
+      "ps": 12, "touchpad": 13
+    },
+    "axes": { "lx": 0, "ly": 1, "rx": 2, "ry": 5, "l2": 3, "r2": 4 },
+    "dpad_hat": 0
+  }
+}

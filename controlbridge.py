@@ -1,0 +1,1005 @@
+"""
+ControlBridge - prototype
+Made by Silverback
+
+Plays keyboard-and-mouse-only PC games with a PS5 DualSense controller,
+using the button layout the PlayStation version of the game used.
+
+How it works:
+  * Reads the DualSense (USB or Bluetooth) through SDL (pygame-ce).
+  * Watches which program is in front. When it matches a game in the
+    "profiles" folder, that game's PlayStation-style layout switches on.
+  * Buttons become key presses / mouse clicks, the left stick becomes
+    movement keys, the right stick becomes mouse movement.
+  * Input is only sent while the game window is in front, so it never
+    types into other programs.
+
+Run:   python controlbridge.py
+
+"""
+
+import ctypes
+import json
+import math
+import os
+import sys
+import time
+from ctypes import wintypes
+
+# Let SDL read the controller even when our console window is not in front.
+os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
+
+try:
+    import pygame
+except ImportError:
+    print("pygame-ce is not installed. Run Start.bat, it installs it for you.")
+    input("Press Enter to close...")
+    sys.exit(1)
+
+if getattr(sys, "frozen", False):          # running as installed ControlBridge.exe
+    APP_DIR = os.path.dirname(sys.executable)
+else:
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, APP_DIR)
+PROFILE_DIR = os.path.join(APP_DIR, "profiles")
+LAYOUT_FILE = os.path.join(APP_DIR, "controller_layout.json")
+LOOP_HZ = 250
+
+IS_WINDOWS = sys.platform == "win32"
+
+# --------------------------------------------------------------------------
+# Windows input sending (SendInput with hardware scan codes, which works
+# with old DirectInput games as well as newer ones)
+# --------------------------------------------------------------------------
+
+ULONG_PTR = ctypes.c_size_t
+
+
+class MOUSEINPUT(ctypes.Structure):
+    _fields_ = [("dx", wintypes.LONG), ("dy", wintypes.LONG),
+                ("mouseData", wintypes.DWORD), ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD), ("dwExtraInfo", ULONG_PTR)]
+
+
+class KEYBDINPUT(ctypes.Structure):
+    _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD),
+                ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD),
+                ("dwExtraInfo", ULONG_PTR)]
+
+
+class HARDWAREINPUT(ctypes.Structure):
+    _fields_ = [("uMsg", wintypes.DWORD), ("wParamL", wintypes.WORD),
+                ("wParamH", wintypes.WORD)]
+
+
+class _INPUTUNION(ctypes.Union):
+    _fields_ = [("mi", MOUSEINPUT), ("ki", KEYBDINPUT), ("hi", HARDWAREINPUT)]
+
+
+class INPUT(ctypes.Structure):
+    _fields_ = [("type", wintypes.DWORD), ("u", _INPUTUNION)]
+
+
+INPUT_MOUSE, INPUT_KEYBOARD = 0, 1
+KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE = 0x1, 0x2, 0x8
+MOUSEEVENTF_MOVE = 0x0001
+MOUSE_BUTTON_FLAGS = {
+    "MOUSE_LEFT": (0x0002, 0x0004),
+    "MOUSE_RIGHT": (0x0008, 0x0010),
+    "MOUSE_MIDDLE": (0x0020, 0x0040),
+}
+MOUSEEVENTF_WHEEL = 0x0800
+WHEEL_DELTA = 120
+
+# Scan codes (set 1). (code, extended?)
+SCANCODES = {
+    "ESCAPE": (0x01, False), "1": (0x02, False), "2": (0x03, False),
+    "3": (0x04, False), "4": (0x05, False), "5": (0x06, False),
+    "6": (0x07, False), "7": (0x08, False), "8": (0x09, False),
+    "9": (0x0A, False), "0": (0x0B, False), "MINUS": (0x0C, False),
+    "EQUALS": (0x0D, False), "BACKSPACE": (0x0E, False), "TAB": (0x0F, False),
+    "Q": (0x10, False), "W": (0x11, False), "E": (0x12, False),
+    "R": (0x13, False), "T": (0x14, False), "Y": (0x15, False),
+    "U": (0x16, False), "I": (0x17, False), "O": (0x18, False),
+    "P": (0x19, False), "LBRACKET": (0x1A, False), "RBRACKET": (0x1B, False),
+    "ENTER": (0x1C, False), "LCTRL": (0x1D, False), "A": (0x1E, False),
+    "S": (0x1F, False), "D": (0x20, False), "F": (0x21, False),
+    "G": (0x22, False), "H": (0x23, False), "J": (0x24, False),
+    "K": (0x25, False), "L": (0x26, False), "SEMICOLON": (0x27, False),
+    "APOSTROPHE": (0x28, False), "GRAVE": (0x29, False),
+    "LSHIFT": (0x2A, False), "BACKSLASH": (0x2B, False), "Z": (0x2C, False),
+    "X": (0x2D, False), "C": (0x2E, False), "V": (0x2F, False),
+    "B": (0x30, False), "N": (0x31, False), "M": (0x32, False),
+    "COMMA": (0x33, False), "PERIOD": (0x34, False), "SLASH": (0x35, False),
+    "RSHIFT": (0x36, False), "NUMPAD_MULTIPLY": (0x37, False),
+    "LALT": (0x38, False), "SPACE": (0x39, False), "CAPSLOCK": (0x3A, False),
+    "F1": (0x3B, False), "F2": (0x3C, False), "F3": (0x3D, False),
+    "F4": (0x3E, False), "F5": (0x3F, False), "F6": (0x40, False),
+    "F7": (0x41, False), "F8": (0x42, False), "F9": (0x43, False),
+    "F10": (0x44, False), "NUMLOCK": (0x45, False),
+    "SCROLLLOCK": (0x46, False), "NUMPAD7": (0x47, False),
+    "NUMPAD8": (0x48, False), "NUMPAD9": (0x49, False),
+    "NUMPAD_MINUS": (0x4A, False), "NUMPAD4": (0x4B, False),
+    "NUMPAD5": (0x4C, False), "NUMPAD6": (0x4D, False),
+    "NUMPAD_PLUS": (0x4E, False), "NUMPAD1": (0x4F, False),
+    "NUMPAD2": (0x50, False), "NUMPAD3": (0x51, False),
+    "NUMPAD0": (0x52, False), "NUMPAD_PERIOD": (0x53, False),
+    "F11": (0x57, False), "F12": (0x58, False),
+    # extended keys
+    "NUMPAD_ENTER": (0x1C, True), "RCTRL": (0x1D, True),
+    "NUMPAD_DIVIDE": (0x35, True), "RALT": (0x38, True),
+    "HOME": (0x47, True), "UP": (0x48, True), "PAGEUP": (0x49, True),
+    "LEFT": (0x4B, True), "RIGHT": (0x4D, True), "END": (0x4F, True),
+    "DOWN": (0x50, True), "PAGEDOWN": (0x51, True), "INSERT": (0x52, True),
+    "DELETE": (0x53, True),
+}
+OUTPUT_NAMES = set(SCANCODES) | set(MOUSE_BUTTON_FLAGS) | {"WHEEL_UP", "WHEEL_DOWN", "NONE"}
+
+if IS_WINDOWS:
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    user32.SendInput.argtypes = (wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int)
+    user32.SendInput.restype = wintypes.UINT
+
+
+def _send(inp):
+    if IS_WINDOWS:
+        user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+
+
+def send_key(name, down):
+    code, extended = SCANCODES[name]
+    flags = KEYEVENTF_SCANCODE | (0 if down else KEYEVENTF_KEYUP)
+    if extended:
+        flags |= KEYEVENTF_EXTENDEDKEY
+    inp = INPUT(type=INPUT_KEYBOARD)
+    inp.u.ki = KEYBDINPUT(0, code, flags, 0, 0)
+    _send(inp)
+
+
+def send_mouse_button(name, down):
+    down_flag, up_flag = MOUSE_BUTTON_FLAGS[name]
+    inp = INPUT(type=INPUT_MOUSE)
+    inp.u.mi = MOUSEINPUT(0, 0, 0, down_flag if down else up_flag, 0, 0)
+    _send(inp)
+
+
+def send_mouse_move(dx, dy):
+    inp = INPUT(type=INPUT_MOUSE)
+    inp.u.mi = MOUSEINPUT(int(dx), int(dy), 0, MOUSEEVENTF_MOVE, 0, 0)
+    _send(inp)
+
+
+def send_wheel(steps):
+    inp = INPUT(type=INPUT_MOUSE)
+    inp.u.mi = MOUSEINPUT(0, 0, (steps * WHEEL_DELTA) & 0xFFFFFFFF, MOUSEEVENTF_WHEEL, 0, 0)
+    _send(inp)
+
+
+FOREGROUND_PATH = [None]   # full path of the last program seen in front
+
+
+def foreground_exe():
+    """Name of the program whose window is in front, e.g. 'splintercell2.exe'."""
+    if not IS_WINDOWS:
+        return None
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return None
+    pid = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    if pid.value == os.getpid():
+        return "__self__"          # our own overlay: ignore
+    handle = kernel32.OpenProcess(0x1000, False, pid.value)  # QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        buf = ctypes.create_unicode_buffer(1024)
+        size = wintypes.DWORD(1024)
+        if kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+            FOREGROUND_PATH[0] = buf.value
+            return os.path.basename(buf.value).lower()
+    finally:
+        kernel32.CloseHandle(handle)
+    return None
+
+
+# --------------------------------------------------------------------------
+# Output state: remembers what is held so nothing gets "stuck"
+# --------------------------------------------------------------------------
+
+class Output:
+    def __init__(self):
+        self.held = {}          # output name -> number of sources holding it
+        self.wheel_queue = []   # +1 / -1 ticks, sent one at a time
+        self.next_wheel = 0.0
+        self.mouse_rem = [0.0, 0.0]
+
+    def press(self, name):
+        if name == "NONE":
+            return
+        if name in ("WHEEL_UP", "WHEEL_DOWN"):
+            self.wheel_queue.append(1 if name == "WHEEL_UP" else -1)
+            return
+        count = self.held.get(name, 0)
+        self.held[name] = count + 1
+        if count == 0:
+            self._raw(name, True)
+
+    def release(self, name):
+        if name in ("NONE", "WHEEL_UP", "WHEEL_DOWN"):
+            return
+        count = self.held.get(name, 0)
+        if count <= 1:
+            self.held.pop(name, None)
+            if count == 1:
+                self._raw(name, False)
+        else:
+            self.held[name] = count - 1
+
+    def _raw(self, name, down):
+        if name in MOUSE_BUTTON_FLAGS:
+            send_mouse_button(name, down)
+        else:
+            send_key(name, down)
+
+    def move_mouse(self, fx, fy):
+        self.mouse_rem[0] += fx
+        self.mouse_rem[1] += fy
+        dx, dy = int(self.mouse_rem[0]), int(self.mouse_rem[1])
+        if dx or dy:
+            self.mouse_rem[0] -= dx
+            self.mouse_rem[1] -= dy
+            send_mouse_move(dx, dy)
+
+    def tick(self, now):
+        # One wheel notch every ~15 ms so the game counts each one.
+        if self.wheel_queue and now >= self.next_wheel:
+            send_wheel(self.wheel_queue.pop(0))
+            self.next_wheel = now + 0.015
+
+    def release_all(self):
+        for name in list(self.held):
+            self._raw(name, False)
+        self.held.clear()
+        self.wheel_queue.clear()
+
+
+# --------------------------------------------------------------------------
+# Controller reading
+# --------------------------------------------------------------------------
+
+BUTTON_NAMES = ["cross", "circle", "square", "triangle", "l1", "r1", "l2", "r2",
+                "l3", "r3", "create", "options", "ps", "touchpad",
+                "dpad_up", "dpad_down", "dpad_left", "dpad_right"]
+
+PRETTY = {"cross": "Cross (X)", "circle": "Circle", "square": "Square",
+          "triangle": "Triangle", "l1": "L1", "r1": "R1", "l2": "L2", "r2": "R2",
+          "l3": "L3 (press left stick)", "r3": "R3 (press right stick)",
+          "create": "Create", "options": "Options", "ps": "PS button",
+          "touchpad": "Touchpad click", "dpad_up": "D-pad Up",
+          "dpad_down": "D-pad Down", "dpad_left": "D-pad Left",
+          "dpad_right": "D-pad Right"}
+
+
+def load_json(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+class Pad:
+    def __init__(self, joystick, layouts):
+        self.js = joystick
+        self.name = joystick.get_name()
+        nb, nh = joystick.get_numbuttons(), joystick.get_numhats()
+        # SDL's own DualSense driver gives 16+ buttons and no hat.
+        key = "sdl" if (nb >= 15 and nh == 0) else "directinput"
+        self.layout_name = key
+        self.layout = layouts[key]
+        self.trigger_threshold = layouts.get("trigger_threshold", 0.6)
+
+    def _button(self, idx):
+        return idx is not None and idx < self.js.get_numbuttons() and self.js.get_button(idx)
+
+    def _axis(self, idx):
+        if idx is None or idx >= self.js.get_numaxes():
+            return 0.0
+        return self.js.get_axis(idx)
+
+    def read(self):
+        b = self.layout["buttons"]
+        a = self.layout["axes"]
+        state = {name: bool(self._button(b.get(name))) for name in BUTTON_NAMES}
+        hat = self.layout.get("dpad_hat")
+        if hat is not None and hat < self.js.get_numhats():
+            hx, hy = self.js.get_hat(hat)
+            state["dpad_left"], state["dpad_right"] = hx < 0, hx > 0
+            state["dpad_up"], state["dpad_down"] = hy > 0, hy < 0
+        l2 = (self._axis(a.get("l2")) + 1) / 2
+        r2 = (self._axis(a.get("r2")) + 1) / 2
+        state["l2"] = state["l2"] or l2 > self.trigger_threshold
+        state["r2"] = state["r2"] or r2 > self.trigger_threshold
+        sticks = (self._axis(a["lx"]), self._axis(a["ly"]),
+                  self._axis(a["rx"]), self._axis(a["ry"]))
+        return state, sticks, (l2, r2)
+
+
+# --------------------------------------------------------------------------
+# Profiles
+# --------------------------------------------------------------------------
+
+def as_list(value):
+    if value is None:
+        return []
+    return [value] if isinstance(value, str) else list(value)
+
+
+def validate_profile(p, path):
+    problems = []
+    for btn, m in p.get("buttons", {}).items():
+        if btn not in BUTTON_NAMES:
+            problems.append(f"unknown button '{btn}'")
+        for k in as_list(m.get("key")) + as_list(m.get("default_key")):
+            if k not in OUTPUT_NAMES:
+                problems.append(f"{btn}: unknown key '{k}'")
+    ls = p.get("left_stick", {})
+    if ls.get("mode") == "keys":
+        for d in ("up", "down", "left", "right"):
+            for k in as_list(ls.get(d)) + as_list(ls.get(f"{d}_default")):
+                if k not in OUTPUT_NAMES:
+                    problems.append(f"left_stick {d}: unknown key '{k}'")
+    for prob in problems:
+        print(f"  ! {os.path.basename(path)}: {prob}")
+    return not problems
+
+
+def _profile_files():
+    """Your own profiles first, then the downloaded library."""
+    out = []
+    for folder, source in ((PROFILE_DIR, "yours"), (os.path.join(PROFILE_DIR, "library"), "library")):
+        if os.path.isdir(folder):
+            for fn in sorted(os.listdir(folder)):
+                if fn.lower().endswith(".json") and not fn.startswith("_"):
+                    out.append((os.path.join(folder, fn), source))
+    return out
+
+
+def load_profiles():
+    profiles = {}
+    for path, source in _profile_files():
+        try:
+            p = load_json(path)
+        except Exception as e:  # noqa: BLE001
+            print(f"  ! Could not read {os.path.basename(path)}: {e}")
+            continue
+        if not validate_profile(p, path):
+            continue
+        p["_file"], p["_source"] = path, source
+        for exe in p.get("exe", []):
+            profiles.setdefault(exe.lower(), p)      # your own profile wins
+    return profiles
+
+
+def profiles_stamp():
+    return sum(os.path.getmtime(path) for path, _ in _profile_files())
+
+
+def print_profile(p):
+    print()
+    print("=" * 64)
+    print(f" {p.get('name', 'Game')}  -  PlayStation layout ON")
+    print("=" * 64)
+    for btn in BUTTON_NAMES:
+        m = p.get("buttons", {}).get(btn)
+        if not m or as_list(m.get("key")) in ([], ["NONE"]):
+            continue
+        keys = " + ".join(as_list(m["key"]))
+        flag = "   <- check" if m.get("check") else ""
+        print(f"  {PRETTY[btn]:<24} {m.get('action', ''):<24} [{keys}]{flag}")
+    ls = p.get("left_stick", {})
+    rs = p.get("right_stick", {})
+    if ls:
+        extra = " + analog speed (mouse wheel)" if ls.get("analog_speed", {}).get("enabled") else ""
+        print(f"  {'Left stick':<24} {'Move':<24} [{'/'.join(as_list(ls.get('up')) + as_list(ls.get('left')) + as_list(ls.get('down')) + as_list(ls.get('right')))}]{extra}")
+    if rs:
+        print(f"  {'Right stick':<24} {'Camera':<24} [mouse]")
+    print("-" * 64)
+    print("  Keys marked 'check' are best guesses: compare with the game's")
+    print("  Options > Controls screen and edit the profile file if needed.")
+    print()
+
+
+# --------------------------------------------------------------------------
+# Mapping engine
+# --------------------------------------------------------------------------
+
+def radial(x, y, deadzone):
+    mag = math.hypot(x, y)
+    if mag <= deadzone:
+        return 0.0, 0.0, 0.0
+    scaled = min(1.0, (mag - deadzone) / (1 - deadzone))
+    return x / mag, y / mag, scaled
+
+
+class Mapper:
+    def __init__(self, profile, out):
+        self.p = profile
+        self.out = out
+        self.prev = {name: False for name in BUTTON_NAMES}
+        self.move_held = set()
+        ls = profile.get("left_stick", {})
+        sp = ls.get("analog_speed", {})
+        self.speed_on = bool(sp.get("enabled"))
+        self.levels = max(1, int(sp.get("levels", 5)))
+        self.rezero = bool(sp.get("rezero_on_release", True))
+        self.speed_level = None     # unknown until we zero it
+        self.speed_pending = None
+        self.speed_since = 0.0
+        self.was_moving = False
+        if self.speed_on:
+            self.zero_speed()
+
+    def zero_speed(self):
+        for _ in range(self.levels + 1):
+            self.out.press("WHEEL_DOWN")
+        self.speed_level = 0
+
+    def update(self, state, sticks, dt, now):
+        buttons = self.p.get("buttons", {})
+        for name in BUTTON_NAMES:
+            m = buttons.get(name)
+            if not m:
+                continue
+            keys = as_list(m.get("key"))
+            if state[name] and not self.prev[name]:
+                for k in keys:
+                    self.out.press(k)
+            elif not state[name] and self.prev[name]:
+                for k in keys:
+                    self.out.release(k)
+        self.prev = dict(state)
+        self._left_stick(sticks[0], sticks[1], now)
+        self._right_stick(sticks[2], sticks[3], dt)
+
+    def _left_stick(self, x, y, now):
+        ls = self.p.get("left_stick", {})
+        if ls.get("mode") != "keys":
+            return
+        dx, dy, mag = radial(x, y, ls.get("deadzone", 0.2))
+        want = set()
+        if mag > 0:
+            t = ls.get("diagonal_threshold", 0.38)
+            if dy < -t: want.update(as_list(ls.get("up")))
+            if dy > t: want.update(as_list(ls.get("down")))
+            if dx < -t: want.update(as_list(ls.get("left")))
+            if dx > t: want.update(as_list(ls.get("right")))
+        for k in self.move_held - want:
+            self.out.release(k)
+        for k in want - self.move_held:
+            self.out.press(k)
+        self.move_held = want
+
+        if not self.speed_on:
+            return
+        if mag == 0:
+            if self.was_moving and self.rezero:
+                self.zero_speed()
+            self.was_moving = False
+            self.speed_pending = None
+            return
+        self.was_moving = True
+        target = min(self.levels - 1, int(mag * self.levels))
+        if target == self.speed_level:
+            self.speed_pending = None
+            return
+        if target != self.speed_pending:
+            self.speed_pending, self.speed_since = target, now
+            return
+        if now - self.speed_since >= 0.06:   # stable for 60 ms
+            diff = target - self.speed_level
+            for _ in range(abs(diff)):
+                self.out.press("WHEEL_UP" if diff > 0 else "WHEEL_DOWN")
+            self.speed_level = target
+            self.speed_pending = None
+
+    def _right_stick(self, x, y, dt):
+        rs = self.p.get("right_stick", {})
+        if rs.get("mode") != "mouse":
+            return
+        dx, dy, mag = radial(x, y, rs.get("deadzone", 0.12))
+        if mag == 0:
+            return
+        speed = (mag ** rs.get("curve", 2.0)) * rs.get("sensitivity", 18) * dt * 60
+        if rs.get("invert_y"):
+            dy = -dy
+        self.out.move_mouse(dx * speed, dy * speed)
+
+    def stop(self):
+        for k in self.move_held:
+            self.out.release(k)
+        self.move_held = set()
+        self.out.release_all()
+
+
+
+import threading  # noqa: E402
+import webbrowser  # noqa: E402
+
+import library  # noqa: E402
+from bindings import installed_steam_games, resolve_profile  # noqa: E402
+from prompts_patcher import steam_libraries  # noqa: E402
+
+SOURCE_TEXT = {"game": ("From your game", "#2d6a3e"), "default": ("Normal key", "#5b5f68"),
+               "yours": ("Your setting", "#2d6a3e"), "missing": ("Not found, check in game", "#8a5a00")}
+
+
+# --------------------------------------------------------------------------
+# Look and feel (matches the website: off-white, off-black, strip blue)
+# --------------------------------------------------------------------------
+
+INK, WHITE, PAPER, LINE = "#17181b", "#f6f5f2", "#e9e8e4", "#dcdbd6"
+MUTED, SOFT, BLUE, CHECK = "#5b5f68", "#b9bcc2", "#2f63ff", "#8a5a00"
+ASSETS = os.path.join(APP_DIR, "assets")
+FONT_DIR = os.path.join(APP_DIR, "fonts")
+
+
+def register_fonts():
+    """Load the bundled Open Sans / Exo 2 files for this program only."""
+    if not (IS_WINDOWS and os.path.isdir(FONT_DIR)):
+        return
+    for fn in os.listdir(FONT_DIR):
+        if fn.lower().endswith((".ttf", ".otf")):
+            ctypes.windll.gdi32.AddFontResourceExW(os.path.join(FONT_DIR, fn), 0x10, 0)
+
+
+def pick_fonts(tkfont):
+    fams = set(tkfont.families())
+    body = next((f for f in ("Open Sans", "Segoe UI", "Arial") if f in fams), "TkDefaultFont")
+    disp = next((f for f in ("Exo 2 ExtraBold", "Exo 2", "Open Sans ExtraBold", "Segoe UI Black")
+                 if f in fams), body)
+    return body, disp
+
+
+# Where each button sits on assets/controller.png, in logo units (240 x 128,
+# starting 12 units down). ("o", cx, cy, r) circle, ("r", x0, y0, x1, y1) box.
+SPOTS = {
+    "triangle": ("o", 185, 50, 7.4), "cross": ("o", 185, 78, 7.4),
+    "square": ("o", 171, 64, 7.4), "circle": ("o", 199, 64, 7.4),
+    "dpad_up": ("r", 49, 43, 61, 56), "dpad_down": ("r", 49, 72, 61, 85),
+    "dpad_left": ("r", 34, 58, 47, 70), "dpad_right": ("r", 63, 58, 76, 70),
+    "l3": ("o", 109, 81, 6.6), "r3": ("o", 131, 81, 6.6),
+    "create": ("r", 86, 38, 91, 50), "options": ("r", 149, 38, 154, 50),
+    "ps": ("o", 120, 69, 3.6), "touchpad": ("r", 102, 35, 138, 62),
+    "l1": ("r", 52, 27.5, 88, 32), "r1": ("r", 152, 27.5, 188, 32),
+    "l2": ("r", 54, 19, 86, 24), "r2": ("r", 154, 19, 186, 24),
+}
+
+
+class Overlay:
+    """Hold-PS button list: a click-through panel that never takes focus."""
+
+    def __init__(self, master, body, disp):
+        import tkinter as tk
+        self.tk, self.body, self.disp = tk, body, disp
+        self.visible = False
+        self.win = tk.Toplevel(master)
+        self.win.overrideredirect(True)
+        self.win.attributes("-topmost", True)
+        self.win.attributes("-alpha", 0.0)
+        self.win.configure(bg=INK)
+        self.win.geometry("+40+40")
+        self.frame = tk.Frame(self.win, bg=INK, padx=22, pady=18,
+                              highlightthickness=1, highlightbackground="#2a2c31")
+        self.frame.pack()
+        self.win.update_idletasks()
+        if IS_WINDOWS:
+            hwnd = user32.GetAncestor(self.win.winfo_id(), 2)
+            style = user32.GetWindowLongW(hwnd, -20)
+            user32.SetWindowLongW(hwnd, -20, style | 0x80000 | 0x20 | 0x80 | 0x08000000 | 0x8)
+
+    def set_profile(self, p):
+        tk = self.tk
+        for w in self.frame.winfo_children():
+            w.destroy()
+        tk.Label(self.frame, text=p.get("name", ""), fg=WHITE, bg=INK, font=(self.disp, 15, "bold"),
+                 anchor="w").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        rows = [(PRETTY[b].split(" (")[0], m.get("action", "")) for b in BUTTON_NAMES
+                for m in [p.get("buttons", {}).get(b)] if m and m.get("action")]
+        rows += [("Left stick", "Move, push further to go faster"), ("Right stick", "Camera")]
+        for i, (btn, action) in enumerate(rows, 1):
+            tk.Label(self.frame, text=btn, fg=WHITE, bg=INK, font=(self.body, 11, "bold"),
+                     anchor="w").grid(row=i, column=0, sticky="w", pady=1)
+            tk.Label(self.frame, text=action, fg="#d0d2d6", bg=INK, font=(self.body, 11),
+                     anchor="w").grid(row=i, column=1, sticky="w", padx=(18, 0), pady=1)
+
+    def show(self, on):
+        if on == self.visible:
+            return
+        self.visible = on
+        self.win.attributes("-alpha", 0.94 if on else 0.0)
+        if on and IS_WINDOWS:
+            hwnd = user32.GetAncestor(self.win.winfo_id(), 2)
+            user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010)
+
+
+class FlatButton:
+    """A plain, flat button in the site's style (black, or outlined)."""
+
+    def __init__(self, parent, text, command, body, primary=False):
+        import tkinter as tk
+        bg, fg = (INK, WHITE) if primary else (WHITE, INK)
+        self.normal, self.hover = bg, ("#2a2c31" if primary else PAPER)
+        self.w = tk.Label(parent, text=text, bg=bg, fg=fg, font=(body, 10, "bold"), padx=16, pady=8,
+                          cursor="hand2", takefocus=1, highlightthickness=2,
+                          highlightbackground=INK, highlightcolor=BLUE)
+        self.w.bind("<Button-1>", lambda e: command())
+        self.w.bind("<Return>", lambda e: command())
+        self.w.bind("<space>", lambda e: command())
+        self.w.bind("<Enter>", lambda e: self.w.configure(bg=self.hover))
+        self.w.bind("<Leave>", lambda e: self.w.configure(bg=self.normal))
+
+
+def _walk2(root):
+    """Folders up to three levels down (enough to find a game's .exe)."""
+    base = root.rstrip("\\/").count(os.sep)
+    for d, dirs, files in os.walk(root):
+        if d.count(os.sep) - base >= 3:
+            dirs[:] = []
+        yield d, files
+
+
+class App:
+    def __init__(self):
+        import tkinter as tk
+        import tkinter.font as tkfont
+        self.tk = tk
+        register_fonts()
+        if IS_WINDOWS:
+            try:
+                ctypes.windll.shcore.SetProcessDpiAwareness(1)
+            except Exception:  # noqa: BLE001
+                pass
+            ctypes.windll.winmm.timeBeginPeriod(1)
+        self.root = tk.Tk()
+        self.root.title("ControlBridge")
+        self.root.configure(bg=WHITE)
+        self.root.geometry("1040x680")
+        self.root.minsize(900, 600)
+        ico = os.path.join(APP_DIR, "icon.ico")
+        if IS_WINDOWS and os.path.isfile(ico):
+            self.root.iconbitmap(ico)
+        self.body, self.disp = pick_fonts(tkfont)
+
+        pygame.init()
+        pygame.joystick.init()
+        self.layouts = load_json(LAYOUT_FILE)
+        self.profiles = load_profiles()
+        self.stamp = profiles_stamp()
+        self.out = Output()
+        self.pad = None
+        self.mapper = None
+        self.active_exe = None
+        self.next_check = 0.0
+        self.next_ui = 0.0
+        self.last = time.perf_counter()
+        self.state = {n: False for n in BUTTON_NAMES}
+        self.sticks = (0.0, 0.0, 0.0, 0.0)
+        self.current = None
+        self._steam_games = None
+        self.lib_status = "Library: checking for new games..."
+        try:
+            self.settings = load_json(os.path.join(APP_DIR, "settings.json"))
+        except Exception:  # noqa: BLE001
+            self.settings = {}
+        self.next_sync = time.perf_counter() + 6 * 3600
+        threading.Thread(target=self._sync_library, daemon=True).start()
+
+        self._build()
+        self.overlay = Overlay(self.root, self.body, self.disp)
+        self.pad = self._open_pad()
+        self._show_game(None)
+        self.root.protocol("WM_DELETE_WINDOW", self.quit)
+        self.root.after(4, self.tick)
+
+    # ---------------------------------------------------------------- layout
+    def _build(self):
+        tk, b, d = self.tk, self.body, self.disp
+        head = tk.Frame(self.root, bg=WHITE, padx=24, pady=14)
+        head.pack(fill="x")
+        try:
+            self.logo_img = tk.PhotoImage(file=os.path.join(ASSETS, "logo-header.png"))
+            tk.Label(head, image=self.logo_img, bg=WHITE).pack(side="left")
+        except Exception:  # noqa: BLE001
+            pass
+        tk.Label(head, text="ControlBridge", bg=WHITE, fg=INK, font=(d, 17, "bold")).pack(side="left", padx=(10, 0))
+        self.status = tk.Label(head, text="Looking for a controller", bg=WHITE, fg=MUTED, font=(b, 10))
+        self.status.pack(side="right")
+        tk.Frame(self.root, bg=LINE, height=1).pack(fill="x")
+
+        foot = tk.Frame(self.root, bg=PAPER, padx=24, pady=12)
+        foot.pack(side="bottom", fill="x")
+        tk.Frame(self.root, bg=LINE, height=1).pack(side="bottom", fill="x")
+        for text, cmd, primary in (("Button prompts", self.open_prompts, True),
+                                   ("Make a profile", self.open_maker, False),
+                                   ("Game profiles", self.open_profiles, False),
+                                   ("Report a problem", self.report_problem, False),
+                                   ("Help", self.open_help, False)):
+            FlatButton(foot, text, cmd, b, primary).w.pack(side="left", padx=(0, 10))
+        tk.Label(foot, text="Pauses when you Alt+Tab away from the game.", bg=PAPER, fg=MUTED,
+                 font=(b, 9)).pack(side="right")
+
+        main = tk.Frame(self.root, bg=WHITE)
+        main.pack(fill="both", expand=True)
+        left = tk.Frame(main, bg=INK, width=430, padx=24, pady=22)
+        left.pack(side="left", fill="y")
+        left.pack_propagate(False)
+        tk.Label(left, text="Live controller", bg=INK, fg=SOFT, font=(b, 10), anchor="w").pack(fill="x")
+        self.scale = 380 / 240
+        self.cv = tk.Canvas(left, width=382, height=int(136 * self.scale) + 4, bg=INK, highlightthickness=0)
+        self.cv.pack(pady=(14, 10))
+        try:
+            self.ctrl_img = tk.PhotoImage(file=os.path.join(ASSETS, "controller.png")).subsample(2)
+            self.cv.create_image(1, int(8 * self.scale), image=self.ctrl_img, anchor="nw")
+        except Exception:  # noqa: BLE001
+            self.cv.create_text(190, 100, text="(controller picture missing)", fill=SOFT)
+        self.spot_ids = {}
+        self.pressed_lbl = tk.Label(left, text="Pressed: nothing", bg=INK, fg="#d0d2d6", font=(b, 10),
+                                    anchor="w", justify="left", wraplength=380)
+        self.pressed_lbl.pack(fill="x")
+        tk.Label(left, text="Hold the PS button in game to see the button list.", bg=INK, fg="#8f939b",
+                 font=(b, 9), anchor="w").pack(side="bottom", fill="x")
+
+        right = tk.Frame(main, bg=WHITE, padx=28, pady=22)
+        right.pack(side="left", fill="both", expand=True)
+        self.kicker = tk.Label(right, bg=WHITE, fg=MUTED, font=(b, 10), anchor="w")
+        self.kicker.pack(fill="x")
+        self.title = tk.Label(right, bg=WHITE, fg=INK, font=(d, 19, "bold"), anchor="w", justify="left",
+                              wraplength=520)
+        self.title.pack(fill="x")
+        self.sub = tk.Label(right, bg=WHITE, fg="#3d4047", font=(b, 10), anchor="w", justify="left",
+                            wraplength=520)
+        self.sub.pack(fill="x", pady=(2, 10))
+        self.table = tk.Frame(right, bg=WHITE)
+        self.table.pack(fill="both", expand=True)
+
+    def _to_px(self, x, y):
+        return x * self.scale + 1, (y - 12 + 8) * self.scale
+
+    def _draw_spots(self):
+        cv = self.cv
+        for name, ids in self.spot_ids.items():
+            for i in ids:
+                cv.delete(i)
+        self.spot_ids = {}
+        for name, spot in SPOTS.items():
+            if not self.state.get(name):
+                continue
+            if spot[0] == "o":
+                _, cx, cy, r = spot
+                x, y = self._to_px(cx, cy)
+                rr = r * self.scale
+                self.spot_ids[name] = [cv.create_oval(x - rr, y - rr, x + rr, y + rr, fill=BLUE, outline="")]
+            else:
+                _, x0, y0, x1, y1 = spot
+                a, b2 = self._to_px(x0, y0)
+                c, e = self._to_px(x1, y1)
+                self.spot_ids[name] = [cv.create_rectangle(a, b2, c, e, fill=BLUE, outline="")]
+        # where the sticks are pointing
+        for key, (cx, cy), (sx, sy) in (("ls", (109, 81), self.sticks[0:2]), ("rs", (131, 81), self.sticks[2:4])):
+            if math.hypot(sx, sy) > 0.15:
+                x, y = self._to_px(cx + sx * 4.5, cy + sy * 4.5)
+                self.spot_ids[key] = [self.cv.create_oval(x - 4, y - 4, x + 4, y + 4, fill=BLUE, outline="")]
+
+    def _keycap(self, parent, text):
+        tk = self.tk
+        box = tk.Frame(parent, bg="#9a9da4", padx=1, pady=1)
+        tk.Label(box, text=text, bg=WHITE, fg=INK, font=(self.body, 9, "bold"), padx=8, pady=1).pack()
+        return box
+
+    def _show_game(self, p, report=None):
+        tk = self.tk
+        for w in self.table.winfo_children():
+            w.destroy()
+        if p is None:
+            self.kicker.configure(text="Waiting for a game")
+            self.title.configure(text="Start a supported game")
+            self.sub.configure(text="When its window is in front, the PlayStation layout switches on here.  "
+                                    + self.lib_status)
+            mine = self._my_supported_games()
+            tk.Label(self.table, text="Your games with a layout" if mine else "Games with a layout",
+                     bg=WHITE, fg=MUTED, font=(self.body, 10), anchor="w").pack(fill="x", pady=(6, 4))
+            names = mine or sorted({q.get("name", "?") for q in self.profiles.values()})[:12]
+            for n in names or ["None yet. The library downloads when you're online."]:
+                tk.Label(self.table, text=n, bg=WHITE, fg=INK, font=(self.body, 11, "bold"),
+                         anchor="w").pack(fill="x", pady=2)
+            return
+        self.kicker.configure(text="Playing now")
+        self.title.configure(text=p.get("name", "Game"))
+        ps = p.get("playstation_version", "PlayStation")
+        speed = " Push the left stick further to move faster." if \
+            p.get("left_stick", {}).get("analog_speed", {}).get("enabled") else ""
+        self.sub.configure(text=f"{ps} layout.{speed}")
+        grid = tk.Frame(self.table, bg=WHITE)
+        grid.pack(fill="x")
+        grid.columnconfigure(1, weight=1)
+        r = 0
+        for btn in BUTTON_NAMES:
+            m = p.get("buttons", {}).get(btn)
+            if not m or (as_list(m.get("key")) in ([], ["NONE"]) and (report or {}).get(btn) != "missing"):
+                continue
+            tk.Label(grid, text=PRETTY[btn].split(" (")[0], bg=WHITE, fg=INK, font=(self.body, 10, "bold"),
+                     anchor="w").grid(row=r, column=0, sticky="w", pady=3, padx=(0, 14))
+            tk.Label(grid, text=m.get("action", ""), bg=WHITE, fg=INK, font=(self.body, 10),
+                     anchor="w").grid(row=r, column=1, sticky="w", pady=3)
+            cell = tk.Frame(grid, bg=WHITE)
+            cell.grid(row=r, column=2, sticky="e", pady=3)
+            self._keycap(cell, " + ".join(k.replace("_", " ").title() for k in as_list(m["key"]))).pack(anchor="e")
+            src = (report or {}).get(btn)
+            if src in SOURCE_TEXT:
+                text, colour = SOURCE_TEXT[src]
+                tk.Label(cell, text=text, bg=WHITE, fg=colour, font=(self.body, 8), anchor="e").pack(anchor="e")
+            elif m.get("check"):
+                tk.Label(cell, text="Check in game", bg=WHITE, fg=CHECK, font=(self.body, 8),
+                         anchor="e").pack(anchor="e")
+            r += 1
+
+    # --------------------------------------------------------------- actions
+    def open_prompts(self):
+        import subprocess
+        exe = os.path.join(APP_DIR, "ControlBridge Prompts.exe")
+        if os.path.isfile(exe):
+            os.startfile(exe)
+        else:
+            subprocess.Popen([sys.executable, os.path.join(APP_DIR, "prompts_patcher.py")],
+                             creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+
+    def open_maker(self):
+        import subprocess
+        exe = os.path.join(APP_DIR, "ControlBridge Profile Maker.exe")
+        if os.path.isfile(exe):
+            os.startfile(exe)
+        else:
+            subprocess.Popen([sys.executable, os.path.join(APP_DIR, "profile_maker.py")],
+                             creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+
+    def open_profiles(self):
+        if IS_WINDOWS:
+            os.startfile(PROFILE_DIR)
+
+    def report_problem(self):
+        p = self.current or next(iter(self.profiles.values()), None)
+        if p:
+            webbrowser.open(library.report_url(p))
+        else:
+            webbrowser.open(library.ISSUES_URL)
+
+    def _sync_library(self):
+        try:
+            count, updated = library.sync(PROFILE_DIR, self.settings.get("library_url", library.LIBRARY_BASE))
+            self.lib_status = f"Library: {count} games" + (f", {updated} new or updated." if updated else ", up to date.")
+        except Exception:  # noqa: BLE001
+            self.lib_status = "Library: offline, using saved layouts."
+        self._steam_games = None      # look again now the library may have grown
+
+    def _my_supported_games(self):
+        if self._steam_games is None:
+            try:
+                self._steam_games = installed_steam_games(steam_libraries)
+            except Exception:  # noqa: BLE001
+                self._steam_games = []
+        names = set()
+        exes = {q.get("name"): [e.lower() for e in q.get("exe", [])] for q in self.profiles.values()}
+        ids = {str(q.get("steam_appid")): q.get("name") for q in self.profiles.values() if q.get("steam_appid")}
+        for g in self._steam_games:
+            if g["appid"] in ids:
+                names.add(ids[g["appid"]])
+                continue
+            if not os.path.isdir(g["folder"]):
+                continue
+            here = {f.lower() for _, fs in _walk2(g["folder"]) for f in fs if f.lower().endswith(".exe")}
+            for name, ex in exes.items():
+                if here & set(ex):
+                    names.add(name)
+        return sorted(names)
+
+    def open_help(self):
+        if IS_WINDOWS:
+            os.startfile(os.path.join(APP_DIR, "README.txt"))
+
+    # ------------------------------------------------------------ main loop
+    def _open_pad(self):
+        for i in range(pygame.joystick.get_count()):
+            js = pygame.joystick.Joystick(i)
+            js.init()
+            pad = Pad(js, self.layouts)
+            self.status.configure(text=f"Controller connected: {pad.name}", fg=INK)
+            return pad
+        self.status.configure(text="No controller found. Plug in or pair your DualSense.", fg=MUTED)
+        return None
+
+    def tick(self):
+        now = time.perf_counter()
+        dt = min(0.05, now - self.last)
+        self.last = now
+        try:
+            for ev in pygame.event.get():
+                if ev.type == pygame.JOYDEVICEADDED and self.pad is None:
+                    self.pad = self._open_pad()
+                elif ev.type == pygame.JOYDEVICEREMOVED and self.pad and \
+                        self.pad.js.get_instance_id() == ev.instance_id:
+                    self._stop_mapper()
+                    self.pad = self._open_pad()
+
+            if now >= self.next_check:
+                self.next_check = now + 0.25
+                if profiles_stamp() != self.stamp and self.mapper is None:
+                    self.stamp = profiles_stamp()           # new layouts: load them, but only
+                    self.profiles = load_profiles()         # while no game is being played
+                    self._stop_mapper()
+                if now >= self.next_sync and self.mapper is None:
+                    self.next_sync = now + 6 * 3600
+                    threading.Thread(target=self._sync_library, daemon=True).start()
+                exe = foreground_exe()
+                if exe != self.active_exe and exe != "__self__":
+                    self._stop_mapper()
+                    self.active_exe = exe
+                    if exe in self.profiles and self.pad:
+                        resolved, report = resolve_profile(self.profiles[exe], FOREGROUND_PATH[0])
+                        self.current = resolved
+                        self.mapper = Mapper(resolved, self.out)
+                        self._show_game(resolved, report)
+                        self.overlay.set_profile(resolved)
+
+            if self.pad:
+                self.state, self.sticks, _ = self.pad.read()
+                if self.mapper:
+                    self.mapper.update(self.state, self.sticks, dt, now)
+                    self.overlay.show(self.state.get(self.mapper.p.get("overlay_button", "ps"), False))
+            self.out.tick(now)
+
+            if self.mapper is None and getattr(self, "_shown_status", None) != self.lib_status:
+                self._shown_status = self.lib_status
+                self._show_game(None)
+            if now >= self.next_ui:
+                self.next_ui = now + 0.05
+                self._draw_spots()
+                names = [PRETTY[n].split(" (")[0] for n in BUTTON_NAMES if self.state.get(n)]
+                self.pressed_lbl.configure(text="Pressed: " + (", ".join(names) if names else "nothing"))
+        except Exception as e:  # noqa: BLE001
+            self.status.configure(text=f"Problem: {e}", fg="#b3261e")
+        self.root.after(4, self.tick)
+
+    def _stop_mapper(self):
+        self.current = None
+        if self.mapper:
+            self.mapper.stop()
+            self.mapper = None
+        self.out.release_all()
+        self.overlay.show(False)
+        self.active_exe = None
+        self._show_game(None)
+
+    def quit(self):
+        try:
+            self._stop_mapper()
+        finally:
+            self.root.destroy()
+
+    def run(self):
+        self.root.mainloop()
+
+
+def main():
+    App().run()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:  # noqa: BLE001
+        try:
+            import tkinter.messagebox as mb
+            mb.showerror("ControlBridge", f"Something went wrong:\n{e}")
+        except Exception:  # noqa: BLE001
+            print(f"Something went wrong: {e}")
