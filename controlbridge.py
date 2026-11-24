@@ -437,6 +437,8 @@ class Mapper:
         self.speed_pending = None
         self.speed_since = 0.0
         self.was_moving = False
+        self.rest_since = None
+        self.sector, self.sector_since = None, 0.0
         if self.speed_on:
             self.zero_speed()
 
@@ -467,13 +469,31 @@ class Mapper:
         if ls.get("mode") != "keys":
             return
         dx, dy, mag = radial(x, y, ls.get("deadzone", 0.2))
-        want = set()
+        # 8 steady directions. A direction only changes when the stick is
+        # clearly in the next one (no flicker on the edge), and each direction
+        # is held long enough for the game to notice it - this is what makes
+        # keyboard-style lockpicking work while you rotate the stick.
+        hyst = ls.get("hysteresis_deg", 10)
+        min_hold = ls.get("min_hold_ms", 90) / 1000
+        sector = None
         if mag > 0:
-            t = ls.get("diagonal_threshold", 0.38)
-            if dy < -t: want.update(as_list(ls.get("up")))
-            if dy > t: want.update(as_list(ls.get("down")))
-            if dx < -t: want.update(as_list(ls.get("left")))
-            if dx > t: want.update(as_list(ls.get("right")))
+            ang = math.degrees(math.atan2(dy, dx))
+            if self.sector is not None:
+                diff = (ang - self.sector * 45 + 180) % 360 - 180
+                sector = self.sector if abs(diff) <= 22.5 + hyst else round(ang / 45) % 8
+            else:
+                sector = round(ang / 45) % 8
+        if sector != self.sector and self.sector is not None and sector is not None \
+                and now - self.sector_since < min_hold:
+            sector = self.sector                      # keep the last one a moment longer
+        if sector != self.sector:
+            self.sector, self.sector_since = sector, now
+        want = set()
+        if sector is not None:
+            if sector in (5, 6, 7): want.update(as_list(ls.get("up")))
+            if sector in (1, 2, 3): want.update(as_list(ls.get("down")))
+            if sector in (3, 4, 5): want.update(as_list(ls.get("left")))
+            if sector in (7, 0, 1): want.update(as_list(ls.get("right")))
         for k in self.move_held - want:
             self.out.release(k)
         for k in want - self.move_held:
@@ -483,12 +503,16 @@ class Mapper:
         if not self.speed_on:
             return
         if mag == 0:
-            if self.was_moving and self.rezero:
-                self.zero_speed()
-            self.was_moving = False
+            if self.was_moving:
+                self.rest_since = now
+                self.was_moving = False
+            if self.rezero and self.rest_since is not None and now - self.rest_since >= 0.3:
+                self.zero_speed()                     # only after a real rest, not a quick wiggle
+                self.rest_since = None
             self.speed_pending = None
             return
         self.was_moving = True
+        self.rest_since = None
         target = min(self.levels - 1, int(mag * self.levels))
         if target == self.speed_level:
             self.speed_pending = None
