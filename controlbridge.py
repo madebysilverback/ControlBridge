@@ -740,15 +740,30 @@ class App:
                                  fg_color="transparent", anchor="w", justify="left", **kw)
 
     def button(self, parent, text, command, primary=False):
-        """Rounded button that inverts its colours on hover, like the website's."""
+        """Rounded button that inverts on hover, like the website's: background AND text swap."""
+        ctk = self.ctk
         bg, fg = (INK, OFF) if primary else (CARD, INK)
         hover_bg, hover_fg = (OFF, INK) if primary else (INK, OFF)
-        b = self.ctk.CTkButton(parent, text=text, command=command, fg_color=bg, hover_color=hover_bg,
-                               text_color=fg, border_width=2, border_color=INK, corner_radius=9,
-                               height=38, font=self.font(13, bold=True))
-        b.bind("<Enter>", lambda e: b.configure(text_color=hover_fg), add="+")
-        b.bind("<Leave>", lambda e: b.configure(text_color=fg), add="+")
-        return b
+
+        class InvertButton(ctk.CTkButton):
+            # The toolkit swaps the background on hover itself; here the text colour swaps
+            # in the same moment, straight on the text label, so it can't be undone.
+            def _set_text(self, colour):
+                lab = getattr(self, "_text_label", None)
+                if lab is not None:
+                    lab.configure(fg=colour)
+
+            def _on_enter(self, event=None):
+                super()._on_enter(event)
+                self._set_text(hover_fg)
+
+            def _on_leave(self, event=None):
+                super()._on_leave(event)
+                self._set_text(fg)
+
+        return InvertButton(parent, text=text, command=command, fg_color=bg, hover_color=hover_bg,
+                            text_color=fg, border_width=2, border_color=INK, corner_radius=9,
+                            height=38, font=self.font(13, bold=True))
 
     def keycap(self, parent, text):
         cap = self.ctk.CTkFrame(parent, fg_color="#ffffff", border_width=1, border_color="#c9cbd0",
