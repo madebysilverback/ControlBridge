@@ -1,4 +1,4 @@
-ControlBridge - prototype v0.7
+ControlBridge - prototype v0.8
 Made by Silverback
 ==============================
 

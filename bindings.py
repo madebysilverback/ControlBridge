@@ -165,20 +165,33 @@ def _norm(s):
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
-def find_key(commands, bindings, exclude=()):
-    """Key bound to any of the commands. Exact command first, then a word inside it."""
+def find_key(commands, bindings, exclude=(), prefer=None):
+    """
+    Key bound to any of the commands. Exact command first, then a word inside it.
+    When several keys do the same thing (W and Up both move forward), the
+    profile's normal key wins, then keyboard keys before the mouse wheel.
+    """
     wanted = [_norm(c) for c in commands if c]
     if not wanted:
         return None
+
+    def pick(matches):
+        keys = [b["key"] for b in matches if b["key"] not in exclude]
+        if not keys:
+            return None
+        if prefer in keys:
+            return prefer
+        keys.sort(key=lambda k: k.startswith("WHEEL_"))
+        return keys[0]
     for w in wanted:
-        for b in bindings:
-            if _norm(b["command"]) == w and b["key"] not in exclude:
-                return b["key"]
+        k = pick([b for b in bindings if _norm(b["command"]) == w])
+        if k:
+            return k
     for w in wanted:
-        for b in bindings:
-            words = [_norm(x) for x in re.split(r"[\s|;,]+", b["command"]) if x]
-            if w in words and b["key"] not in exclude:
-                return b["key"]
+        k = pick([b for b in bindings
+                  if w in [_norm(x) for x in re.split(r"[\s|;,]+", b["command"]) if x]])
+        if k:
+            return k
     return None
 
 
@@ -197,7 +210,7 @@ def resolve_profile(profile, exe_path):
         if m.get("key") and m.get("key") != "NONE":
             report[btn] = "yours"
             continue
-        k = find_key(m.get("commands", []), binds)
+        k = find_key(m.get("commands", []), binds, prefer=m.get("default_key"))
         if k:
             m["key"], report[btn] = k, "game"
         elif m.get("default_key") and m.get("default_key") != "NONE":
@@ -210,7 +223,8 @@ def resolve_profile(profile, exe_path):
     ls = p.get("left_stick", {})
     for d in ("up", "down", "left", "right"):
         if ls.get("mode", "keys") == "keys" and not ls.get(d):
-            ls[d] = (find_key(ls.get(f"{d}_commands", []), binds) or ls.get(f"{d}_default")
+            ls[d] = (find_key(ls.get(f"{d}_commands", []), binds, prefer=ls.get(f"{d}_default"))
+                     or ls.get(f"{d}_default")
                      or {"up": "W", "down": "S", "left": "A", "right": "D"}[d])
     p["_bindings_found"] = len(binds)
     return p, report

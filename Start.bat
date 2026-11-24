@@ -15,10 +15,10 @@ if errorlevel 1 (
   exit /b
 )
 
-%PY% -c "import pygame" >nul 2>nul
+%PY% -c "import pygame, customtkinter, PIL" >nul 2>nul
 if errorlevel 1 (
-  echo First run: installing pygame-ce, one moment...
-  %PY% -m pip install --user pygame-ce
+  echo First run: installing what ControlBridge needs, one moment...
+  %PY% -m pip install --user -r requirements.txt
 )
 
 %PY% controlbridge.py %*
