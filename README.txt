@@ -6,6 +6,8 @@ Play keyboard-only PC games with a PS5 DualSense, using the buttons the
 PlayStation version of the game used. First game: Splinter Cell: Pandora
 Tomorrow (Steam), with the PS2 layout.
 
+Contact: controlbridge@madebysilverback.com
+
 DualSense and PlayStation are trademarks of Sony Interactive Entertainment
 Inc. ControlBridge is an independent project and is not affiliated with or
 endorsed by Sony.

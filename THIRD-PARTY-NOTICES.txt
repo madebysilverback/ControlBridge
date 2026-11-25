@@ -2,6 +2,7 @@ ControlBridge - credits and licences
 ====================================
 ControlBridge is free beta software by Made by Silverback, provided as is,
 without warranty. Source code: github.com/madebysilverback/ControlBridge
+Contact: controlbridge@madebysilverback.com
 
 Trademarks
 ----------
