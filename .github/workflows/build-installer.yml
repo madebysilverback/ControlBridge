@@ -43,7 +43,7 @@ jobs:
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
-          $ver = "0.8.0"
+          $ver = (Select-String -Path controlbridge.py -Pattern 'APP_VERSION = "([0-9.]+)"').Matches[0].Groups[1].Value + ".0"
           if ("${{ github.ref }}" -like "refs/tags/v*") { $ver = "${{ github.ref_name }}".TrimStart("v") }
           & $iscc "/DAppVersion=$ver" installer\ControlBridge.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
