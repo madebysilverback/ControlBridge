@@ -1,4 +1,4 @@
-ControlBridge - prototype v0.8
+ControlBridge - beta v0.9
 Made by Silverback
 ==============================
 
@@ -58,8 +58,21 @@ Something wrong? Click "Report a problem". It opens a ready-filled post;
 after two reports for the same game the layout is rebuilt automatically.
 
 
+SETTINGS (CAMERA, STICKS, CHANGING BUTTONS)
+-------------------------------------------
+Click "Settings" in ControlBridge and pick the game at the top.
+- Camera: speed, fine aiming near the centre, deadzone, invert up/down.
+- Movement: deadzone, "push further to move faster" and its speed steps.
+- Buttons: click Change next to a button, then press the key (or click
+  the mouse button) you want. Reset puts the normal key back.
+Click Save. The changes apply when you go back to the game.
+Your settings are kept separately, so library updates never wipe them.
+
+
 IF A BUTTON DOES THE WRONG THING
 --------------------------------
+The easiest fix: Settings > Buttons > Change (see above).
+Or by hand:
 Keys marked "Check in game" were best guesses.
 1. In the game: Options > Controls, note the key for that action.
 2. Click "Game profiles". Copy the game's .json file from the "library"

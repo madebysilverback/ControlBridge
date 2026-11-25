@@ -18,7 +18,7 @@ import urllib.request
 
 LIBRARY_BASE = "https://raw.githubusercontent.com/madebysilverback/controlbridge-profiles/main/library/"
 ISSUES_URL = "https://github.com/madebysilverback/controlbridge-profiles/issues/new"
-AGENT = "ControlBridge/0.8 (+https://madebysilverback.com)"
+AGENT = "ControlBridge/0.9 (+https://madebysilverback.com)"
 
 
 def _get(url, timeout=20):

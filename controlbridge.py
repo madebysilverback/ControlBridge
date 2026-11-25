@@ -551,6 +551,7 @@ import threading  # noqa: E402
 import webbrowser  # noqa: E402
 
 import library  # noqa: E402
+import your_settings  # noqa: E402
 from bindings import installed_steam_games, resolve_profile  # noqa: E402
 from prompts_patcher import steam_libraries  # noqa: E402
 
@@ -564,7 +565,7 @@ SOURCE_TEXT = {"game": ("From your game", "#2d6a3e"), "default": ("Normal key", 
 
 INK, WHITE, PAPER, LINE = "#17181b", "#f6f5f2", "#e9e8e4", "#dcdbd6"
 OFF, CARD = "#f2f1ee", "#faf9f7"
-APP_VERSION = "0.8"
+APP_VERSION = "0.9"
 MUTED, SOFT, BLUE, CHECK = "#5b5f68", "#b9bcc2", "#2f63ff", "#8a5a00"
 ASSETS = os.path.join(APP_DIR, "assets")
 FONT_DIR = os.path.join(APP_DIR, "fonts")
@@ -674,6 +675,205 @@ def _walk2(root):
         yield d, files
 
 
+class SettingsWindow:
+    """Per-game settings: camera speed, stick feel and button changes, saved separately
+    from the layout so library updates never wipe them."""
+
+    def __init__(self, app):
+        import copy
+        self.app, self.ctk = app, app.ctk
+        ctk = self.ctk
+        self.copy = copy
+        self.games = {}
+        for q in app.profiles.values():
+            self.games.setdefault(your_settings.profile_id(q), q)
+        if not self.games:
+            return
+        start = app.current or next((q for q in self.games.values() if q.get("name") in app._my_supported_games()),
+                                    None) or sorted(self.games.values(), key=lambda q: q.get("name", ""))[0]
+        self.win = ctk.CTkToplevel(app.root, fg_color=OFF)
+        self.win.title("ControlBridge settings")
+        self.win.geometry("800x740")
+        self.win.minsize(720, 600)
+        self.win.transient(app.root)
+        self.win.after(150, self.win.lift)
+
+        head = ctk.CTkFrame(self.win, fg_color="transparent")
+        head.pack(fill="x", padx=28, pady=(22, 12))
+        app.label(head, "Settings", 22, bold=True, display=True).pack(side="left")
+        names = sorted(q.get("name", "?") for q in self.games.values())
+        self.picker = ctk.CTkOptionMenu(head, values=names, command=self.pick_game, width=300, height=36,
+                                        corner_radius=9, fg_color=CARD, button_color=INK,
+                                        button_hover_color="#2a2c31", text_color=INK,
+                                        font=app.font(13, bold=True), dropdown_font=app.font(13))
+        self.picker.pack(side="right")
+        app.label(head, "Game", 13, MUTED).pack(side="right", padx=(0, 10))
+
+        foot = ctk.CTkFrame(self.win, fg_color="transparent")
+        foot.pack(side="bottom", fill="x", padx=28, pady=(12, 22))
+        app.button(foot, "Save", self.save, primary=True).pack(side="right")
+        app.button(foot, "Cancel", self.win.destroy).pack(side="right", padx=(0, 10))
+        app.link(foot, "Reset this game", self.reset_all).pack(side="left")
+
+        self.body = ctk.CTkScrollableFrame(self.win, fg_color="transparent")
+        self.body.pack(fill="both", expand=True, padx=(22, 14))
+        self.picker.set(start.get("name", "?"))
+        self.pick_game(start.get("name"))
+
+    # ------------------------------------------------------------ helpers
+    def card(self, title, note=""):
+        ctk, app = self.ctk, self.app
+        c = ctk.CTkFrame(self.body, fg_color=CARD, corner_radius=16, border_width=1, border_color=LINE)
+        c.pack(fill="x", padx=6, pady=(0, 14))
+        app.label(c, title, 16, bold=True).pack(fill="x", padx=22, pady=(18, 0))
+        if note:
+            app.label(c, note, 12, MUTED, wraplength=640).pack(fill="x", padx=22, pady=(2, 0))
+        inner = ctk.CTkFrame(c, fg_color="transparent")
+        inner.pack(fill="x", padx=22, pady=(10, 18))
+        inner.grid_columnconfigure(1, weight=1)
+        return inner
+
+    def slider(self, parent, row, label, low, high, steps, value, fmt, on_change):
+        ctk, app = self.ctk, self.app
+        app.label(parent, label, 13).grid(row=row, column=0, sticky="w", pady=8, padx=(0, 16))
+        out = app.label(parent, fmt(value), 13, bold=True, width=70)
+        out.grid(row=row, column=2, sticky="e", pady=8)
+
+        def changed(v):
+            out.configure(text=fmt(v))
+            on_change(v)
+        sl = ctk.CTkSlider(parent, from_=low, to=high, number_of_steps=steps, command=changed, height=18,
+                           fg_color="#dcdbd6", progress_color=INK, button_color=INK, button_hover_color=BLUE)
+        sl.set(value)
+        sl.grid(row=row, column=1, sticky="ew", pady=8)
+
+    def switch(self, parent, row, label, value, on_change):
+        ctk, app = self.ctk, self.app
+        app.label(parent, label, 13).grid(row=row, column=0, columnspan=2, sticky="w", pady=8)
+        sw = ctk.CTkSwitch(parent, text="", width=46, progress_color=BLUE, button_color="#ffffff",
+                           button_hover_color="#ffffff", fg_color="#c9cbd0",
+                           command=lambda: on_change(bool(sw.get())))
+        if value:
+            sw.select()
+        sw.grid(row=row, column=2, sticky="e", pady=8)
+
+    # ------------------------------------------------------------ content
+    def pick_game(self, name):
+        self.profile = next(q for q in self.games.values() if q.get("name") == name)
+        self.pid = your_settings.profile_id(self.profile)
+        self.draft = self.copy.deepcopy(self.app.user_settings.get(self.pid, {}))
+        if self.app.current and your_settings.profile_id(self.app.current) == self.pid:
+            self.resolved = self.app.current
+        else:
+            self.resolved, _ = resolve_profile(self.profile, None)
+        self.capturing = None
+        self.render()
+
+    def render(self):
+        for w in self.body.winfo_children():
+            w.destroy()
+        d, p = self.draft, self.resolved
+        rs = {**p.get("right_stick", {}), **d.get("right_stick", {})}
+        ls = p.get("left_stick", {})
+        mls = d.get("left_stick", {})
+        sets = lambda part, key: (lambda v: d.setdefault(part, {}).__setitem__(key, v))
+
+        cam = self.card("Camera", "Right stick. Turn it faster or slower, and choose how gentle it is near the centre.")
+        self.slider(cam, 0, "Speed", 4, 40, 36, rs.get("sensitivity", 18), lambda v: f"{int(round(v))}",
+                    lambda v: sets("right_stick", "sensitivity")(int(round(v))))
+        self.slider(cam, 1, "Fine aiming", 1.0, 3.0, 20, rs.get("curve", 2.0), lambda v: f"{v:.1f}",
+                    lambda v: sets("right_stick", "curve")(round(v, 1)))
+        self.slider(cam, 2, "Deadzone", 0.04, 0.3, 26, rs.get("deadzone", 0.12), lambda v: f"{int(round(v * 100))}%",
+                    lambda v: sets("right_stick", "deadzone")(round(v, 2)))
+        self.switch(cam, 3, "Invert up and down", rs.get("invert_y", False), sets("right_stick", "invert_y"))
+
+        mv = self.card("Movement", "Left stick.")
+        self.slider(mv, 0, "Deadzone", 0.05, 0.5, 45, mls.get("deadzone", ls.get("deadzone", 0.2)),
+                    lambda v: f"{int(round(v * 100))}%", lambda v: sets("left_stick", "deadzone")(round(v, 2)))
+        if "analog_speed" in ls:
+            sp = {**ls["analog_speed"], **mls.get("analog_speed", {})}
+
+            def set_speed(key):
+                return lambda v: d.setdefault("left_stick", {}).setdefault("analog_speed", {}).__setitem__(key, v)
+            self.switch(mv, 1, "Push further to move faster", sp.get("enabled", False), set_speed("enabled"))
+            self.slider(mv, 2, "Speed steps in this game", 2, 8, 6, sp.get("levels", 5), lambda v: f"{int(round(v))}",
+                        lambda v: set_speed("levels")(int(round(v))))
+
+        bt = self.card("Buttons", "Click Change, then press the key (or click the mouse button) the game uses.")
+        bt.grid_columnconfigure(1, weight=1)
+        mine = d.get("buttons", {})
+        r = 0
+        for btn in BUTTON_NAMES:
+            m = p.get("buttons", {}).get(btn)
+            if btn == "ps" or not m or not m.get("action"):
+                continue
+            key = mine.get(btn) or (m.get("key") if m.get("key") not in (None, "NONE") else m.get("default_key"))
+            self.app.label(bt, PRETTY[btn].split(" (")[0], 13, bold=True, width=110).grid(row=r, column=0, sticky="w",
+                                                                                          pady=6)
+            self.app.label(bt, m.get("action", ""), 13, "#2c2e33").grid(row=r, column=1, sticky="w", pady=6)
+            cell = self.ctk.CTkFrame(bt, fg_color="transparent")
+            cell.grid(row=r, column=2, sticky="e", pady=6)
+            if self.capturing == btn:
+                box = self.ctk.CTkLabel(cell, text="Press a key, or click here with a mouse button",
+                                        font=self.app.font(12, bold=True), text_color="#ffffff", fg_color=BLUE,
+                                        corner_radius=7, height=30, cursor="hand2")
+                box.pack(side="left", padx=(0, 10))
+                for n in (1, 2, 3):
+                    box.bind(f"<Button-{n}>", lambda e, n=n: self.captured(MOUSE_BUTTONS_TK[n]))
+                box.bind("<MouseWheel>", lambda e: self.captured("WHEEL_UP" if e.delta > 0 else "WHEEL_DOWN"))
+                self.win.bind("<KeyPress>", self.on_key)
+            else:
+                if btn in mine:
+                    self.app.link(cell, "Reset", lambda b=btn: self.reset(b)).pack(side="left", padx=(0, 12))
+                if key and key != "NONE":
+                    self.app.keycap(cell, key_label(key)).pack(side="left", padx=(0, 10))
+            small = self.app.button(cell, "Cancel" if self.capturing == btn else "Change",
+                                    lambda b=btn: self.start_capture(b))
+            small.configure(height=30, width=84)
+            small.pack(side="left")
+            r += 1
+
+    # ------------------------------------------------------------ button changes
+    def start_capture(self, btn):
+        self.capturing = None if self.capturing == btn else btn
+        if self.capturing is None:
+            self.win.unbind("<KeyPress>")
+        self.render()
+
+    def on_key(self, event):
+        k = your_settings.key_from_tk(event.keysym)
+        if k:
+            self.captured(k)
+        return "break"
+
+    def captured(self, key):
+        if self.capturing and key in OUTPUT_NAMES:
+            self.draft.setdefault("buttons", {})[self.capturing] = key
+        self.capturing = None
+        self.win.unbind("<KeyPress>")
+        self.render()
+
+    def reset(self, btn):
+        self.draft.get("buttons", {}).pop(btn, None)
+        self.render()
+
+    def reset_all(self):
+        self.draft = {}
+        self.render()
+
+    def save(self):
+        if self.draft:
+            self.app.user_settings[self.pid] = self.draft
+        else:
+            self.app.user_settings.pop(self.pid, None)
+        your_settings.save(PROFILE_DIR, self.app.user_settings)
+        self.app.status.configure(text="Settings saved. They apply when you go back to the game.")
+        self.win.destroy()
+
+
+MOUSE_BUTTONS_TK = {1: "MOUSE_LEFT", 2: "MOUSE_MIDDLE", 3: "MOUSE_RIGHT"}
+
+
 class App:
     """The ControlBridge window: rounded cards and buttons, in the website's colours."""
 
@@ -720,6 +920,7 @@ class App:
             self.settings = load_json(os.path.join(APP_DIR, "settings.json"))
         except Exception:  # noqa: BLE001
             self.settings = {}
+        self.user_settings = your_settings.load(PROFILE_DIR)
         self.next_sync = time.perf_counter() + 6 * 3600
         threading.Thread(target=self._sync_library, daemon=True).start()
 
@@ -811,11 +1012,12 @@ class App:
         foot = ctk.CTkFrame(self.root, fg_color="transparent")
         foot.pack(side="bottom", fill="x", padx=28, pady=(16, 20))
         for text, cmd, primary in (("Button prompts", self.open_prompts, True),
-                                   ("Make a profile", self.open_maker, False),
-                                   ("Game profiles", self.open_profiles, False)):
+                                   ("Settings", self.open_settings, False),
+                                   ("Make a profile", self.open_maker, False)):
             self.button(foot, text, cmd, primary).pack(side="left", padx=(0, 10))
         self.link(foot, "Help", self.open_help).pack(side="right")
         self.link(foot, "Report a problem", self.report_problem).pack(side="right", padx=(0, 22))
+        self.link(foot, "Game profiles", self.open_profiles).pack(side="right", padx=(0, 22))
 
         main = ctk.CTkFrame(self.root, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=28)
@@ -996,6 +1198,16 @@ class App:
             subprocess.Popen([sys.executable, os.path.join(APP_DIR, "profile_maker.py")],
                              creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
 
+    def open_settings(self):
+        if getattr(self, "settings_win", None) is not None:
+            try:
+                if self.settings_win.win.winfo_exists():
+                    self.settings_win.win.lift()
+                    return
+            except Exception:  # noqa: BLE001
+                pass
+        self.settings_win = SettingsWindow(self)
+
     def open_profiles(self):
         if IS_WINDOWS:
             os.startfile(PROFILE_DIR)
@@ -1074,11 +1286,14 @@ class App:
                     self.next_sync = now + 6 * 3600
                     threading.Thread(target=self._sync_library, daemon=True).start()
                 exe = foreground_exe()
-                if exe != self.active_exe and exe != "__self__":
+                if exe == "__self__":
+                    exe = None                      # ControlBridge itself is in front: pause
+                if exe != self.active_exe:
                     self._stop_mapper()
                     self.active_exe = exe
                     if exe in self.profiles and self.pad:
                         resolved, report = resolve_profile(self.profiles[exe], FOREGROUND_PATH[0])
+                        resolved, report = your_settings.apply(resolved, report, self.user_settings)
                         self.current = resolved
                         self.mapper = Mapper(resolved, self.out)
                         self._show_game(resolved, report)
