@@ -1,0 +1,33 @@
+ControlBridge - credits and licences
+====================================
+ControlBridge is free beta software by Made by Silverback, provided as is,
+without warranty. Source code: github.com/madebysilverback/ControlBridge
+
+Trademarks
+----------
+DualSense, PlayStation and PS5 are trademarks or registered trademarks of
+Sony Interactive Entertainment Inc. Windows is a trademark of Microsoft
+Corporation. Steam is a trademark of Valve Corporation. Game names belong to
+their owners. ControlBridge is not affiliated with or endorsed by any of them.
+
+Software used (under their own licences)
+----------------------------------------
+- Python - Python Software Foundation License
+- pygame-ce - GNU Lesser General Public License 2.1
+  Source: https://github.com/pygame-community/pygame-ce
+  You may replace this library: ControlBridge's own source is public, so it
+  can be rebuilt with a modified pygame-ce.
+- SDL - zlib licence
+- CustomTkinter - MIT licence
+- Pillow - MIT-CMU licence
+- PyInstaller (build tool) and Inno Setup (installer)
+
+Fonts
+-----
+- Open Sans and Exo 2 - SIL Open Font License 1.1
+
+Game layouts
+------------
+Built from public facts with thanks to StrategyWiki (CC BY-SA 4.0),
+PCGamingWiki and Wikidata (CC0). The layout library is shared under
+CC BY-SA 4.0: github.com/madebysilverback/controlbridge-profiles
