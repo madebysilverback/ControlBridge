@@ -2,7 +2,7 @@
 ; Built automatically by GitHub Actions (.github/workflows/build-installer.yml)
 
 #ifndef AppVersion
-  #define AppVersion "0.8.0"
+  #define AppVersion "0.9.0"
 #endif
 
 [Setup]
@@ -40,6 +40,7 @@ Source: "..\controller_layout.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\profiles\*.json"; DestDir: "{app}\profiles"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\profiles\library\*.json"; DestDir: "{app}\profiles\library"; Flags: ignoreversion
 Source: "..\README.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\ControlBridge"; Filename: "{app}\ControlBridge.exe"
@@ -47,6 +48,7 @@ Name: "{group}\ControlBridge - Button Prompts"; Filename: "{app}\ControlBridge P
 Name: "{group}\ControlBridge - Profile Maker"; Filename: "{app}\ControlBridge Profile Maker.exe"
 Name: "{group}\ControlBridge - Game Profiles"; Filename: "{app}\profiles"
 Name: "{group}\Read me"; Filename: "{app}\README.txt"
+Name: "{group}\Credits and licences"; Filename: "{app}\THIRD-PARTY-NOTICES.txt"
 Name: "{userdesktop}\ControlBridge"; Filename: "{app}\ControlBridge.exe"; Tasks: desktopicon
 
 [Run]
