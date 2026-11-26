@@ -1,5 +1,5 @@
 """
-ControlBridge - Profile Maker (prototype)
+Tapsquatch - Profile Maker (prototype)
 Made by Silverback
 
 Makes a game profile with AI help, so games don't have to be mapped by hand:
@@ -87,7 +87,7 @@ def text_folders(game_dir):
 def make_prompt(game, ps_version, ps_controls, bindings, exes):
     blines = "\n".join(f"- {b['raw']} = {b['command']}   (file: {b['file']})" for b in bindings[:300])
     elines = "\n".join(f"- {e}" for e in exes[:40])
-    return f"""You are making a controller profile for ControlBridge, a Windows app that lets a PS5
+    return f"""You are making a controller profile for Tapsquatch, a Windows app that lets a PS5
 DualSense play an old PC game using the button layout of the game's PlayStation version.
 
 GAME: {game}
@@ -224,7 +224,7 @@ def build_profile(game, ps_version, reply, bindings, game_dir):
         "auto_made": True,
         "format": 2,
         "status": "made with AI",
-        "_note": "Made by the ControlBridge Profile Maker with AI help. Entries with \"check\": true need a quick test in game. "
+        "_note": "Made by the Tapsquatch Profile Maker with AI help. Entries with \"check\": true need a quick test in game. "
                  + str(reply.get("notes", "")),
         "game_files": {"folder_contains": words, "text_folders": text_folders(game_dir) or ["system"]},
         "buttons": buttons,
@@ -338,7 +338,7 @@ def make_one():
     print(f"  {len(profile['buttons']) - 1} buttons mapped, program: {', '.join(profile['exe']) or 'not found'}")
     if unsure:
         print(f"  Please test these in game: {', '.join(unsure)} (shown as 'Check in game').")
-    print("ControlBridge picks the new profile up straight away.")
+    print("Tapsquatch picks the new profile up straight away.")
     if ask("\nShare it so everyone gets this game? (y/n)", "y").lower() == "y":
         share(profile)
 
@@ -382,7 +382,7 @@ def set_key():
 
 
 def main():
-    print("ControlBridge - Profile Maker")
+    print("Tapsquatch - Profile Maker")
     print("-" * 52)
     while True:
         st = load_settings()

@@ -1,20 +1,20 @@
-ControlBridge - launch checklist (all free)
+Tapsquatch - launch checklist (all free)
 ===========================================
 
 Do these in order. Each has its own step-by-step guide.
 
-1. SET UP THE GAME LIBRARY  (controlbridge-profiles.zip > SETUP.txt)
-   - Public GitHub project named exactly: controlbridge-profiles
+1. SET UP THE GAME LIBRARY  (tapsquatch-profiles.zip > SETUP.txt)
+   - Public GitHub project named exactly: tapsquatch-profiles
    - Optional free Gemini key as a secret (for games without a table)
    - Run "Player feedback" once, then "Profile factory" with 5 games
    Result: library/profiles fills up, and keeps growing every night.
 
 2. BUILD THE INSTALLER  (this folder > HOW-TO-BUILD-THE-INSTALLER.txt)
    - A second GitHub project for the app (can stay private)
-   - Run "Build Windows installer", download ControlBridge-Setup.exe
+   - Run "Build Windows installer", download Tapsquatch-Setup.exe
 
 3. TEST ON YOUR PC
-   - Install, connect the DualSense, open ControlBridge
+   - Install, connect the DualSense, open Tapsquatch
    - The right side should say "Library: N games" after a few seconds
    - Turn off Steam Input for Pandora Tomorrow, start it, and play
    - Under each key it says "From your game", "Normal key" or "Not found"

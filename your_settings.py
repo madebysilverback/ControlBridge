@@ -1,5 +1,5 @@
 """
-ControlBridge - your own settings per game (camera speed, stick feel, button changes).
+Tapsquatch - your own settings per game (camera speed, stick feel, button changes).
 
 Saved in profiles/your_settings.json, separate from the game's layout file, so
 library updates never wipe them. Applied on top of the layout every time the
@@ -11,7 +11,7 @@ import os
 
 FILE_NAME = "your_settings.json"
 
-# Tk key names -> ControlBridge key names, for "press a key to change it"
+# Tk key names -> Tapsquatch key names, for "press a key to change it"
 TK_KEYS = {
     "space": "SPACE", "shift_l": "LSHIFT", "shift_r": "RSHIFT", "control_l": "LCTRL", "control_r": "RCTRL",
     "alt_l": "LALT", "alt_r": "RALT", "return": "ENTER", "kp_enter": "NUMPAD_ENTER", "escape": "ESCAPE",

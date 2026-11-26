@@ -1,4 +1,4 @@
-How to get ControlBridge-Setup.exe (no tools needed on your PC)
+How to get Tapsquatch-Setup.exe (no tools needed on your PC)
 ============================================================
 
 GitHub builds the installer for you on a Windows machine.
@@ -8,16 +8,16 @@ FIRST TIME
    (Check Settings > Public profile: the "Name" there is what shows on
    your uploads - leave it as Made by Silverback, not your real name.)
 2. Click "+" (top right) > New repository.
-   Name: ControlBridge.  Choose Private for now.  Click Create repository.
+   Name: Tapsquatch.  Choose Private for now.  Click Create repository.
 3. On the new page click "uploading an existing file".
-4. Open the unzipped ControlBridge folder, select EVERYTHING inside it
+4. Open the unzipped Tapsquatch folder, select EVERYTHING inside it
    (including the ".github" and "installer" folders) and drag it onto
    the GitHub page. Click "Commit changes".
 5. Click the "Actions" tab > "Build Windows installer" (left) >
    "Run workflow" > green "Run workflow" button.
 6. Wait about 3-5 minutes until the run shows a green tick. Click the run,
-   scroll to "Artifacts", click "ControlBridge-Setup". It downloads a zip
-   with ControlBridge-Setup.exe inside.
+   scroll to "Artifacts", click "Tapsquatch-Setup". It downloads a zip
+   with Tapsquatch-Setup.exe inside.
 
 EACH UPDATE
 Unzip my new files over your folder, upload the changed files to GitHub

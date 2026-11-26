@@ -1,12 +1,12 @@
 """
-ControlBridge - reading key bindings from a game's own files.
+Tapsquatch - reading key bindings from a game's own files.
 
 Shared by the app (to find each player's real keys when a game starts)
 and by the Profile Maker.
 
 Library profiles describe buttons by ACTION, not by key:
     "triangle": {"action": "Jump", "commands": ["Jump"], "default_key": "LSHIFT"}
-When the game starts, ControlBridge reads the player's settings files, finds
+When the game starts, Tapsquatch reads the player's settings files, finds
 which key does "Jump" on their copy, and uses that. If nothing is found it
 falls back to default_key. A plain "key" (set by the player) always wins.
 """

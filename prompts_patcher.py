@@ -1,5 +1,5 @@
 """
-ControlBridge - Button Prompts patcher (prototype)
+Tapsquatch - Button Prompts patcher (prototype)
 Made by Silverback
 
 Changes the key names the game shows on screen ("Press Space") into the
@@ -343,7 +343,7 @@ def restore(profile, game_dir):
 def report(profile, game_dir):
     rules, key_to_label = build_rules(profile, game_dir)
     out_path = os.path.join(APP_DIR, "prompt_scan_report.txt")
-    lines = [f"ControlBridge prompt scan report - {profile['name']}",
+    lines = [f"Tapsquatch prompt scan report - {profile['name']}",
              f"Game folder: {hide_user(game_dir)}", ""]
     # Current key bindings
     for folder in profile.get("game_files", {}).get("text_folders", []):
@@ -411,7 +411,7 @@ def choose_profile():
 
 
 def main():
-    print("ControlBridge - PlayStation button prompts")
+    print("Tapsquatch - PlayStation button prompts")
     print("-" * 52)
     profile = choose_profile()
     game_dir = find_game(profile)

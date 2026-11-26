@@ -1,9 +1,9 @@
 """
-ControlBridge - the shared online game library.
+Tapsquatch - the shared online game library.
 
 The library lives in the public GitHub project
-madebysilverback/controlbridge-profiles. It is filled automatically by the
-profile factory. On start, ControlBridge downloads the index and any profile
+madebysilverback/tapsquatch-profiles. It is filled automatically by the
+profile factory. On start, Tapsquatch downloads the index and any profile
 that is new or changed into profiles/library/.
 
 Profiles in profiles/ itself (your own, or made with the Profile Maker)
@@ -16,9 +16,9 @@ import os
 import urllib.parse
 import urllib.request
 
-LIBRARY_BASE = "https://raw.githubusercontent.com/madebysilverback/controlbridge-profiles/main/library/"
-ISSUES_URL = "https://github.com/madebysilverback/controlbridge-profiles/issues/new"
-AGENT = "ControlBridge/0.9 (+https://madebysilverback.com)"
+LIBRARY_BASE = "https://raw.githubusercontent.com/madebysilverback/tapsquatch-profiles/main/library/"
+ISSUES_URL = "https://github.com/madebysilverback/tapsquatch-profiles/issues/new"
+AGENT = "Tapsquatch/0.9 (+https://madebysilverback.com)"
 
 
 def _get(url, timeout=20):
@@ -81,7 +81,7 @@ def report_url(profile, button_hint=""):
 def share_url(profile):
     """A ready-filled GitHub post that offers a profile to the library."""
     text = json.dumps(profile, indent=1)
-    body = ("A profile made with the ControlBridge Profile Maker.\n\n"
+    body = ("A profile made with the Tapsquatch Profile Maker.\n\n"
             f"```json\n{text}\n```\n")
     q = urllib.parse.urlencode({"template": "new-profile.md", "labels": "new-profile",
                                 "title": f"New profile: {profile.get('name', '')}", "body": body})

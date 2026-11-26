@@ -1,5 +1,5 @@
 @echo off
-title ControlBridge
+title Tapsquatch
 cd /d "%~dp0"
 
 set "PY=python"
@@ -17,9 +17,9 @@ if errorlevel 1 (
 
 %PY% -c "import pygame, customtkinter, PIL" >nul 2>nul
 if errorlevel 1 (
-  echo First run: installing what ControlBridge needs, one moment...
+  echo First run: installing what Tapsquatch needs, one moment...
   %PY% -m pip install --user -r requirements.txt
 )
 
-%PY% controlbridge.py %*
+%PY% tapsquatch.py %*
 pause
