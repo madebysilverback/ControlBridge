@@ -555,7 +555,7 @@ import your_settings  # noqa: E402
 from bindings import installed_steam_games, resolve_profile  # noqa: E402
 from prompts_patcher import steam_libraries  # noqa: E402
 
-SOURCE_TEXT = {"game": ("From your game", "#2d6a3e"), "default": ("Normal key", "#5b5f68"),
+SOURCE_TEXT = {"game": ("From your game", "#2d6a3e"), "default": ("Normal key", "#6a5a48"),
                "yours": ("Your setting", "#2d6a3e"), "missing": ("Not found, check in game", "#8a5a00")}
 
 
@@ -563,10 +563,10 @@ SOURCE_TEXT = {"game": ("From your game", "#2d6a3e"), "default": ("Normal key", 
 # Look and feel (matches the website: off-white, off-black, strip blue)
 # --------------------------------------------------------------------------
 
-INK, WHITE, PAPER, LINE = "#17181b", "#f6f5f2", "#e9e8e4", "#dcdbd6"
-OFF, CARD = "#f2f1ee", "#faf9f7"
-APP_VERSION = "0.9.1"
-MUTED, SOFT, BLUE, CHECK = "#5b5f68", "#b9bcc2", "#2f63ff", "#8a5a00"
+INK, WHITE, PAPER, LINE = "#2e4a3b", "#f3e8cd", "#e6d6b2", "#d6c49e"
+OFF, CARD = "#efe3c6", "#f8efda"
+APP_VERSION = "0.9.2"
+MUTED, SOFT, BLUE, CHECK = "#6a5a48", "#c9b593", "#c15f2c", "#8a5a00"
 ASSETS = os.path.join(APP_DIR, "assets")
 FONT_DIR = os.path.join(APP_DIR, "fonts")
 
@@ -617,7 +617,7 @@ class Overlay:
         self.win.configure(bg=INK)
         self.win.geometry("+40+40")
         self.frame = tk.Frame(self.win, bg=INK, padx=22, pady=18,
-                              highlightthickness=1, highlightbackground="#2a2c31")
+                              highlightthickness=1, highlightbackground="#243a2e")
         self.frame.pack()
         self.win.update_idletasks()
         if IS_WINDOWS:
@@ -637,7 +637,7 @@ class Overlay:
         for i, (btn, action) in enumerate(rows, 1):
             tk.Label(self.frame, text=btn, fg=WHITE, bg=INK, font=(self.body, 11, "bold"),
                      anchor="w").grid(row=i, column=0, sticky="w", pady=1)
-            tk.Label(self.frame, text=action, fg="#d0d2d6", bg=INK, font=(self.body, 11),
+            tk.Label(self.frame, text=action, fg="#e6d6b2", bg=INK, font=(self.body, 11),
                      anchor="w").grid(row=i, column=1, sticky="w", padx=(18, 0), pady=1)
 
     def show(self, on):
@@ -704,7 +704,7 @@ class SettingsWindow:
         names = sorted(q.get("name", "?") for q in self.games.values())
         self.picker = ctk.CTkOptionMenu(head, values=names, command=self.pick_game, width=300, height=36,
                                         corner_radius=9, fg_color=CARD, button_color=INK,
-                                        button_hover_color="#2a2c31", text_color=INK,
+                                        button_hover_color="#243a2e", text_color=INK,
                                         font=app.font(13, bold=True), dropdown_font=app.font(13))
         self.picker.pack(side="right")
         app.label(head, "Game", 13, MUTED).pack(side="right", padx=(0, 10))
@@ -743,15 +743,15 @@ class SettingsWindow:
             out.configure(text=fmt(v))
             on_change(v)
         sl = ctk.CTkSlider(parent, from_=low, to=high, number_of_steps=steps, command=changed, height=18,
-                           fg_color="#dcdbd6", progress_color=INK, button_color=INK, button_hover_color=BLUE)
+                           fg_color="#d6c49e", progress_color=INK, button_color=INK, button_hover_color=BLUE)
         sl.set(value)
         sl.grid(row=row, column=1, sticky="ew", pady=8)
 
     def switch(self, parent, row, label, value, on_change):
         ctk, app = self.ctk, self.app
         app.label(parent, label, 13).grid(row=row, column=0, columnspan=2, sticky="w", pady=8)
-        sw = ctk.CTkSwitch(parent, text="", width=46, progress_color=BLUE, button_color="#ffffff",
-                           button_hover_color="#ffffff", fg_color="#c9cbd0",
+        sw = ctk.CTkSwitch(parent, text="", width=46, progress_color=BLUE, button_color="#f8efda",
+                           button_hover_color="#f8efda", fg_color="#dcc8a4",
                            command=lambda: on_change(bool(sw.get())))
         if value:
             sw.select()
@@ -810,12 +810,12 @@ class SettingsWindow:
             key = mine.get(btn) or (m.get("key") if m.get("key") not in (None, "NONE") else m.get("default_key"))
             self.app.label(bt, PRETTY[btn].split(" (")[0], 13, bold=True, width=110).grid(row=r, column=0, sticky="w",
                                                                                           pady=6)
-            self.app.label(bt, m.get("action", ""), 13, "#2c2e33").grid(row=r, column=1, sticky="w", pady=6)
+            self.app.label(bt, m.get("action", ""), 13, "#3b2e24").grid(row=r, column=1, sticky="w", pady=6)
             cell = self.ctk.CTkFrame(bt, fg_color="transparent")
             cell.grid(row=r, column=2, sticky="e", pady=6)
             if self.capturing == btn:
                 box = self.ctk.CTkLabel(cell, text="Press a key, or click here with a mouse button",
-                                        font=self.app.font(12, bold=True), text_color="#ffffff", fg_color=BLUE,
+                                        font=self.app.font(12, bold=True), text_color="#f8efda", fg_color=BLUE,
                                         corner_radius=7, height=30, cursor="hand2")
                 box.pack(side="left", padx=(0, 10))
                 for n in (1, 2, 3):
@@ -967,7 +967,7 @@ class App:
                             height=38, font=self.font(13, bold=True))
 
     def keycap(self, parent, text):
-        cap = self.ctk.CTkFrame(parent, fg_color="#ffffff", border_width=1, border_color="#c9cbd0",
+        cap = self.ctk.CTkFrame(parent, fg_color="#f8efda", border_width=1, border_color="#dcc8a4",
                                 corner_radius=7)
         self.ctk.CTkLabel(cap, text=text, font=self.font(12, bold=True), text_color=INK,
                           fg_color="transparent", height=22).pack(padx=10, pady=2)
@@ -1000,9 +1000,9 @@ class App:
             self.logo_img = ctk.CTkImage(light_image=logo, size=(44, 34))
             ctk.CTkLabel(head, text="", image=self.logo_img).pack(side="left")
         self.label(head, "Tapsquatch", 20, bold=True, display=True).pack(side="left", padx=(12, 10))
-        ctk.CTkLabel(head, text=f"v{APP_VERSION} Beta", font=self.font(12, bold=True), text_color="#ffffff",
+        ctk.CTkLabel(head, text=f"v{APP_VERSION} Beta", font=self.font(12, bold=True), text_color="#f8efda",
                      fg_color=BLUE, corner_radius=6, height=22).pack(side="left")
-        self.status = self.label(head, "Looking for a controller", 13, "#3d4047")
+        self.status = self.label(head, "Looking for a controller", 13, "#4a3b2e")
         self.status.pack(side="right")
         try:
             ctrl_small = Image.open(os.path.join(ASSETS, "controller-small.png"))
@@ -1032,7 +1032,7 @@ class App:
         left = ctk.CTkFrame(main, fg_color=INK, corner_radius=18, width=430)
         left.grid(row=0, column=0, sticky="ns", padx=(0, 18))
         left.pack_propagate(False)
-        self.label(left, "Live controller", 13, "#a9acb3").pack(fill="x", padx=26, pady=(24, 0))
+        self.label(left, "Live controller", 13, "#c9b593").pack(fill="x", padx=26, pady=(24, 0))
         s = self.ui_scale
         self.pic_w = int(378 * s)
         self.scale = self.pic_w / 240
@@ -1047,15 +1047,15 @@ class App:
         except Exception:  # noqa: BLE001
             self.cv.create_text(self.pic_w // 2, 100, text="(controller picture missing)", fill=SOFT)
         self.spot_ids = {}
-        self.label(left, "Pressed", 13, "#a9acb3").pack(fill="x", padx=26, pady=(4, 6))
+        self.label(left, "Pressed", 13, "#c9b593").pack(fill="x", padx=26, pady=(4, 6))
         self.tags = ctk.CTkFrame(left, fg_color="transparent", height=28)
         self.tags.pack(fill="x", padx=26)
         self._shown_tags = None
         tips = ctk.CTkFrame(left, fg_color="transparent")
         tips.pack(side="bottom", fill="x", padx=26, pady=(0, 22))
-        ctk.CTkFrame(tips, fg_color="#2e3035", height=1, corner_radius=0).pack(fill="x", pady=(0, 12))
+        ctk.CTkFrame(tips, fg_color="#3e5a4a", height=1, corner_radius=0).pack(fill="x", pady=(0, 12))
         self.label(tips, "Hold PS in game to see the button list.\nPauses when you Alt+Tab away from the game.",
-                   12, "#8f939b").pack(fill="x")
+                   12, "#b09a7c").pack(fill="x")
 
         # right card: the game and its layout
         right = ctk.CTkFrame(main, fg_color=CARD, corner_radius=18, border_width=1, border_color=LINE)
@@ -1068,7 +1068,7 @@ class App:
         self.lib_lbl.pack(side="right")
         self.title = self.label(right, "", 24, bold=True, display=True, wraplength=560)
         self.title.pack(fill="x", padx=28, pady=(4, 0))
-        self.sub = self.label(right, "", 13, "#3d4047", wraplength=560)
+        self.sub = self.label(right, "", 13, "#4a3b2e", wraplength=560)
         self.sub.pack(fill="x", padx=28, pady=(6, 12))
         self.heads = ctk.CTkFrame(right, fg_color="transparent")
         self.heads.pack(fill="x", padx=32)
@@ -1089,9 +1089,9 @@ class App:
         for w in self.tags.winfo_children():
             w.destroy()
         if not names:
-            self.label(self.tags, "Nothing", 13, "#6b6e76").pack(side="left")
+            self.label(self.tags, "Nothing", 13, "#7a6650").pack(side="left")
         for n in names[:6]:
-            self.ctk.CTkLabel(self.tags, text=n, font=self.font(13, bold=True), text_color="#ffffff",
+            self.ctk.CTkLabel(self.tags, text=n, font=self.font(13, bold=True), text_color="#f8efda",
                               fg_color=BLUE, corner_radius=7, height=26).pack(side="left", padx=(0, 8))
 
     def _to_px(self, x, y):
@@ -1126,10 +1126,10 @@ class App:
         ctk = self.ctk
         self.label(self.table, first, 14, bold=True, width=120).grid(row=r, column=0, sticky="w", padx=(10, 12),
                                                                      pady=(9, 9))
-        self.label(self.table, second, 14, "#2c2e33", bold=bold_second).grid(row=r, column=1, sticky="w")
+        self.label(self.table, second, 14, "#3b2e24", bold=bold_second).grid(row=r, column=1, sticky="w")
         if right_widget:
             right_widget.grid(row=r, column=2, sticky="e", padx=(8, 10))
-        ctk.CTkFrame(self.table, fg_color="#ebeae6", height=1, corner_radius=0).grid(
+        ctk.CTkFrame(self.table, fg_color="#e2d2ad", height=1, corner_radius=0).grid(
             row=r, column=0, columnspan=3, sticky="sew")
 
     def _show_game(self, p, report=None):
@@ -1155,7 +1155,7 @@ class App:
                 self.label(self.table, n, 14, bold=True).grid(row=i * 2 - 1 + 1, column=0, columnspan=2,
                                                               sticky="w", padx=10, pady=9)
                 tag.grid(row=i * 2, column=2, sticky="e", padx=10)
-                ctk.CTkFrame(self.table, fg_color="#ebeae6", height=1, corner_radius=0).grid(
+                ctk.CTkFrame(self.table, fg_color="#e2d2ad", height=1, corner_radius=0).grid(
                     row=i * 2, column=0, columnspan=3, sticky="sew")
             return
         if not self.heads.winfo_ismapped():
@@ -1262,7 +1262,7 @@ class App:
             js = pygame.joystick.Joystick(i)
             js.init()
             pad = Pad(js, self.layouts)
-            self.status.configure(text=f"{pad.name.replace(' Wireless Controller', '')} connected", text_color="#3d4047")
+            self.status.configure(text=f"{pad.name.replace(' Wireless Controller', '')} connected", text_color="#4a3b2e")
             return pad
         self.status.configure(text="No controller found. Plug in or pair your DualSense.", text_color=MUTED)
         return None

@@ -1,4 +1,4 @@
-Tapsquatch - beta v0.9.1  (formerly called ControlBridge)
+Tapsquatch - beta v0.9.2  (formerly called ControlBridge)
 Made by Silverback
 ==============================
 
